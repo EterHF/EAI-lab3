@@ -112,16 +112,17 @@ class MyGetupEnv(Getup):
         symmetry_reward = jp.exp(-0.5 * (left_right_diff + front_rear_diff))
         
         rew_term_1 = jp.where((orientation_reward > 0.8), height_reward, 0.0) 
-        rew_term_2 = jp.where(rew_term_1 > 0.35, joint_pos_reward, 0.0)
+        rew_term_2 = jp.where(rew_term_1 > 0.35, 0.1 * action_reward + 0.1 * joint_qvel_reward + 
+                                                0.5 * joint_pos_reward + 0.3 * symmetry_reward, 0.0)
 
-        base_reward = 0.3 * rew_term_1 + 0.5 * rew_term_2 + 0.2 * action_reward
+        base_reward = 0.5 * rew_term_1 + 0.4 * rew_term_2
         time_penalty = -0.1 * state.data.time
         final_reward = jp.where(body_height > DESIRED_BODY_HEIGHT * 0.6, 
                             base_reward + 10.0, 
                             base_reward + time_penalty)
         
         if "last_act" in state.info:
-            action_smoothness = jp.exp(-1.0*jp.sum(jp.square(action - state.info["last_act"])))
+            action_smoothness = jp.exp(-1.0 * jp.sum(jp.square(action - state.info["last_act"])))
             final_reward *= action_smoothness
         reward = final_reward
         # TODO: End of your code.

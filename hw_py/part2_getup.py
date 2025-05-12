@@ -101,7 +101,6 @@ class MyGetupEnv(Getup):
         # torque_reward = jp.exp(-0.1 * torque_penalty)
         
         action_reward = jp.exp(-0.5 * jp.sum(jp.square(action)))
-        action_reward = jp.where(action_reward > 0.4, action_reward, 0.0)
         
         leg_fl = joint_qpos[0:3]
         leg_fr = joint_qpos[3:6]
@@ -111,13 +110,13 @@ class MyGetupEnv(Getup):
         front_rear_diff = jp.sum(jp.square(leg_fl - leg_rl)) + jp.sum(jp.square(leg_fr - leg_rr))
         symmetry_reward = jp.exp(-0.5 * (left_right_diff + front_rear_diff))
         
-        rew_term_1 = jp.where((orientation_reward > 0.8), height_reward, 0.0) 
-        rew_term_2 = jp.where(rew_term_1 > 0.35, 0.1 * action_reward + 0.1 * joint_qvel_reward + 
-                                                0.5 * joint_pos_reward + 0.3 * symmetry_reward, 0.0)
+        rew_term_1 = jp.where((orientation_reward > 0.8), height_reward, -1.0) 
+        rew_term_2 = jp.where(rew_term_1 > 0.31, 0.1 * action_reward + 0.1 * joint_qvel_reward + 
+                                                0.4 * joint_pos_reward + 0.4 * symmetry_reward, 0.0)
 
-        base_reward = 0.5 * rew_term_1 + 0.4 * rew_term_2
-        time_penalty = -0.1 * state.data.time
-        final_reward = jp.where(body_height > DESIRED_BODY_HEIGHT * 0.6, 
+        base_reward = 0.6 * rew_term_1 + 0.4 * rew_term_2
+        time_penalty = -0.005 * state.data.time
+        final_reward = jp.where(body_height > DESIRED_BODY_HEIGHT * 0.65, 
                             base_reward + 10.0, 
                             base_reward + time_penalty)
         

@@ -78,52 +78,46 @@ class MyGetupEnv(Getup):
         #   3. joint position (error to default pose)
         #   4. body angular velocity (error to zero)
 
-        body_height = body_pos[2]
-        height_error = jp.abs(body_height - DESIRED_BODY_HEIGHT)
-        height_reward = jp.exp(-(8.0 * height_error)**2)
-        
-        up_cosine = -jp.dot(gravity_vector, up_vec) / jp.linalg.norm(gravity_vector)
-        orientation_reward = up_cosine * jp.exp(-1.0 * (1 - up_cosine))
-        
-        joint_pos_error = jp.sum(jp.square(joint_qpos - default_qpos))
-        joint_pos_reward = jp.exp(-0.5 * joint_pos_error)
-        
-        joint_qvel_error = jp.sum(jp.square(joint_qvel))
-        joint_qvel_reward = jp.exp(-0.5 * joint_qvel_error)
-        
-        # ang_vel_error = jp.sum(jp.square(body_ang_vel))
-        # ang_vel_reward = jp.exp(-0.1 * ang_vel_error)
-        
-        # lin_vel_error = jp.sum(jp.square(body_lin_vel))
-        # lin_vel_reward = jp.exp(-0.1 * lin_vel_error)
+        torso_height = data.site_xpos[self._imu_site_id][2]
+        joint_torques = data.actuator_force
 
-        # torque_penalty = jp.sum(jp.square(data.ctrl))
-        # torque_reward = jp.exp(-0.1 * torque_penalty)
-        
-        action_reward = jp.exp(-0.5 * jp.sum(jp.square(action)))
-        
+        is_upright = self._is_upright(gravity_vector)
+        is_at_desired_height = self._is_at_desired_height(torso_height)
+        gate = is_upright * is_at_desired_height
+
+        reward_orientation = self._reward_orientation(gravity_vector)
+        reward_height = self._reward_height(torso_height)
+        reward_posture = self._reward_posture(joint_qpos, is_upright)
+        reward_stand_still = self._reward_stand_still(action, gate)
+        reward_action_rate = self._cost_action_rate(action, state.info)
+        reward_torques = self._cost_torques(joint_torques)
+        reward_dof_pos_limits = self._cost_joint_pos_limits(joint_qpos)
+        reward_dof_acc = self._cost_dof_acc(data.qacc[6:])
+        reward_dof_vel = self._cost_dof_vel(data.qvel[6:])
+
         leg_fl = joint_qpos[0:3]
         leg_fr = joint_qpos[3:6]
         leg_rl = joint_qpos[6:9]
         leg_rr = joint_qpos[9:12]
         left_right_diff = jp.sum(jp.square(leg_fl - leg_fr)) + jp.sum(jp.square(leg_rl - leg_rr))
         front_rear_diff = jp.sum(jp.square(leg_fl - leg_rl)) + jp.sum(jp.square(leg_fr - leg_rr))
-        symmetry_reward = jp.exp(-0.5 * (left_right_diff + front_rear_diff))
+        reward_symmetry = jp.exp(-0.5 * (left_right_diff + front_rear_diff))
         
-        rew_term_1 = jp.where((orientation_reward > 0.8), height_reward, -1.0) 
-        rew_term_2 = jp.where(rew_term_1 > 0.31, 0.1 * action_reward + 0.1 * joint_qvel_reward + 
-                                                0.4 * joint_pos_reward + 0.4 * symmetry_reward, 0.0)
-
-        base_reward = 0.6 * rew_term_1 + 0.4 * rew_term_2
-        time_penalty = -0.005 * state.data.time
-        final_reward = jp.where(body_height > DESIRED_BODY_HEIGHT * 0.65, 
-                            base_reward + 10.0, 
-                            base_reward + time_penalty)
+        reward = (
+            + 1.0 * reward_orientation
+            + 2.0 * reward_height
+            + 1.0 * reward_posture
+            + 0.5 * reward_symmetry
+            # + 0.1 * reward_stand_still
+            + -0.01 * reward_action_rate
+            # + -0.1 * reward_dof_pos_limits
+            + -0.0002 * reward_torques
+            # + -2.5e-7 * reward_dof_acc
+            # + -0.1 * reward_dof_vel
+        )
         
-        if "last_act" in state.info:
-            action_smoothness = jp.exp(-1.0 * jp.sum(jp.square(action - state.info["last_act"])))
-            final_reward *= action_smoothness
-        reward = final_reward
+        # bonus = jp.where(torso_height > DESIRED_BODY_HEIGHT * 0.7, 10.0, 0.0)
+        # reward += bonus
         # TODO: End of your code.
 
         state.info["last_last_act"] = state.info["last_act"]

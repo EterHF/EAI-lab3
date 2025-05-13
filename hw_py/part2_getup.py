@@ -81,13 +81,13 @@ class MyGetupEnv(Getup):
         body_height = body_pos[2]
         torques = data.actuator_force
 
-        is_upright = jp.sum(jp.square(up_vec - gravity_vector)) < 0.01
-        is_at_desired_height = (DESIRED_BODY_HEIGHT - body_height) < 0.05
+        is_upright = jp.sum(jp.square(up_vec - gravity_vector)) < 0.02
+        is_at_desired_height = (DESIRED_BODY_HEIGHT - body_height) < 0.09
         gate = is_upright * is_at_desired_height
 
         reward_orientation = jp.exp(-2.0 * jp.sum(jp.square(up_vec - gravity_vector)))
 
-        reward_height = jp.exp(-3.0 * (DESIRED_BODY_HEIGHT - body_height) ** 2)
+        reward_height = jp.exp(-10.0 * (DESIRED_BODY_HEIGHT - body_height) ** 2)
 
         reward_posture = jp.exp(-0.5 * jp.sum(jp.square(joint_qpos - default_qpos))) * is_upright
 
@@ -97,25 +97,28 @@ class MyGetupEnv(Getup):
 
         reward_torques = jp.sqrt(jp.sum(jp.square(torques))) + jp.sum(jp.abs(torques))
 
+        rew_dof = self._cost_joint_pos_limits(joint_qpos)
+
         leg_fl = joint_qpos[0:3]
         leg_fr = joint_qpos[3:6]
         leg_rl = joint_qpos[6:9]
         leg_rr = joint_qpos[9:12]
         left_right_diff = jp.sum(jp.square(leg_fl - leg_fr)) + jp.sum(jp.square(leg_rl - leg_rr))
         front_rear_diff = jp.sum(jp.square(leg_fl - leg_rl)) + jp.sum(jp.square(leg_fr - leg_rr))
-        reward_symmetry = jp.exp(-0.5 * (left_right_diff + front_rear_diff))
+        reward_symmetry = jp.exp(-0.5 * (left_right_diff + front_rear_diff)) * gate
         
         reward = (
-            + 0.5 * reward_orientation
-            + 4.0 * reward_height
-            + 0.8 * reward_posture
+            + 1.0 * reward_orientation
+            + 4.5 * reward_height
+            + 1.5 * reward_posture
             + 0.5 * reward_symmetry
-            + 0.1 * reward_stand_still
-            + -0.001 * reward_action_rate
+            + 0.5 * reward_stand_still
+            + -0.01 * reward_action_rate
             + -0.0002 * reward_torques
+            + -0.5 * rew_dof
         )
         
-        # bonus = jp.where(body_height > DESIRED_BODY_HEIGHT * 0.7, 10.0, 0.0)
+        # bonus = 0.5 * (body_height > DESIRED_BODY_HEIGHT * 0.96)
         # reward += bonus
         # TODO: End of your code.
 
@@ -209,7 +212,7 @@ def train_ppo():
         num_minibatches=32,
         num_updates_per_batch=4,
         discounting=0.97,
-        learning_rate=5e-4, # 3e-4
+        learning_rate=3e-4, # 5e-4
         entropy_cost=1e-2,
         num_envs=4096,
         batch_size=128, # 256

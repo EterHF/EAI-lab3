@@ -78,22 +78,24 @@ class MyGetupEnv(Getup):
         #   3. joint position (error to default pose)
         #   4. body angular velocity (error to zero)
 
-        torso_height = data.site_xpos[self._imu_site_id][2]
-        joint_torques = data.actuator_force
+        body_height = body_pos[2]
+        torques = data.actuator_force
 
-        is_upright = self._is_upright(gravity_vector)
-        is_at_desired_height = self._is_at_desired_height(torso_height)
+        is_upright = jp.sum(jp.square(up_vec - gravity_vector)) < 0.01
+        is_at_desired_height = (DESIRED_BODY_HEIGHT - body_height) < 0.05
         gate = is_upright * is_at_desired_height
 
-        reward_orientation = self._reward_orientation(gravity_vector)
-        reward_height = self._reward_height(torso_height)
-        reward_posture = self._reward_posture(joint_qpos, is_upright)
-        reward_stand_still = self._reward_stand_still(action, gate)
-        reward_action_rate = self._cost_action_rate(action, state.info)
-        reward_torques = self._cost_torques(joint_torques)
-        reward_dof_pos_limits = self._cost_joint_pos_limits(joint_qpos)
-        reward_dof_acc = self._cost_dof_acc(data.qacc[6:])
-        reward_dof_vel = self._cost_dof_vel(data.qvel[6:])
+        reward_orientation = jp.exp(-2.0 * jp.sum(jp.square(up_vec - gravity_vector)))
+
+        reward_height = jp.exp(-3.0 * (DESIRED_BODY_HEIGHT - body_height) ** 2)
+
+        reward_posture = jp.exp(-0.5 * jp.sum(jp.square(joint_qpos - default_qpos))) * is_upright
+
+        reward_stand_still = jp.exp(-0.5 * jp.sum(jp.square(action))) * gate
+
+        reward_action_rate = jp.sum(jp.square(action - state.info["last_act"]))
+
+        reward_torques = jp.sqrt(jp.sum(jp.square(torques))) + jp.sum(jp.abs(torques))
 
         leg_fl = joint_qpos[0:3]
         leg_fr = joint_qpos[3:6]
@@ -104,19 +106,16 @@ class MyGetupEnv(Getup):
         reward_symmetry = jp.exp(-0.5 * (left_right_diff + front_rear_diff))
         
         reward = (
-            + 1.0 * reward_orientation
-            + 2.0 * reward_height
-            + 1.0 * reward_posture
+            + 0.5 * reward_orientation
+            + 4.0 * reward_height
+            + 0.8 * reward_posture
             + 0.5 * reward_symmetry
-            # + 0.1 * reward_stand_still
-            + -0.01 * reward_action_rate
-            # + -0.1 * reward_dof_pos_limits
+            + 0.1 * reward_stand_still
+            + -0.001 * reward_action_rate
             + -0.0002 * reward_torques
-            # + -2.5e-7 * reward_dof_acc
-            # + -0.1 * reward_dof_vel
         )
         
-        # bonus = jp.where(torso_height > DESIRED_BODY_HEIGHT * 0.7, 10.0, 0.0)
+        # bonus = jp.where(body_height > DESIRED_BODY_HEIGHT * 0.7, 10.0, 0.0)
         # reward += bonus
         # TODO: End of your code.
 
